@@ -1,69 +1,84 @@
 /* jshint node: true */
-'use strict';
-var mysql 	= require('mysql');
+"use strict";
+var mysql = require("mysql");
+
+var pool;
 
 var db = {
 
-	getConnection: function(conf){
-		//try making a connection to mysql
-		//
-		var conn = mysql.createConnection(conf);
-		conn.on('error', function(err){
-			console.log('dberror: '+err);
-		});
-		return conn;
-	},
+  getPool: function(conf) {
+    if (pool) {
+      return pool;
+    }
+    //create a connection pool, assign and return
+    //
+    var conn = mysql.createPool(conf);
+    conn.on("error", function(err) {
+      console.log("dberror: " + err);
+    });
+    conn.on("connection", function(err) {
+      console.log("pulling out a connection now");
+    });
+    pool = conn;
+    return pool;
+  },
 
-	insert: function(conf, sql, params, callback){
-		var conn = db.getConnection(conf);
-		conn.connect(function(err){
-			/* istanbul ignore if */
-			if( err )
-				return callback(true, 'insert: db connection failed '+err.message);
+  insert: function(conf, sql, params, callback) {
+    var conn = db.getPool(conf).getConnection(function(err, connection) {
+      if (err) {
+        if (connection) {
+          connection.release();
+        }
+        throw err;
+      }
+      if (err)
+        return callback(true, "insert: db connection failed " + err.message);
 
-			conn.query(sql, params, function(err, res){
-				conn.end();
-				if( err )
-					return callback(err, err.message);
-				return callback(err, res.insertId);
-			});
-		});
-	},
+      connection.query(sql, params, function(err, res) {
+        connection.release();
+        if (err) return callback(err, err.message);
+        return callback(err, res.insertId);
+      });
+    });
+  },
 
-	query: function(conf, sql, params, callback){
-		var conn = db.getConnection(conf);
-		conn.connect(function(err){
-			/* istanbul ignore if */
-			if( err )
-				return callback(true, 'query: db connection failed '+err.message);
+  query: function(conf, sql, params, callback) {
+    var conn = db.getPool(conf).getConnection(function(err, connection) {
+      if (err) {
+        if (connection) {
+          connection.release();
+        }
 
-			conn.query(sql, params, function(err, rows, fields){
-				conn.end();
-				return callback(err, rows, fields);
-			});
-		});
-	},
+        throw err;
+      }
+      connection.query(sql, params, function(err, rows, fields) {
+        connection.release();
+        return callback(err, rows, fields);
+      });
+      connection.on("error", function(err) {
+        throw err;
+        return;
+      });
+    });
+  },
 
-	queryArray: function(conf, sql, params, callback){
-		db.query(conf, sql, params, function(err, rows, fields){
-			var arr = [];
-			if( !err )
-				for( var i in rows )arr.push(rows[i][fields[0].name]);
-			return callback(err, arr);
-		});
-	},
+  queryArray: function(conf, sql, params, callback) {
+    db.query(conf, sql, params, function(err, rows, fields) {
+      var arr = [];
+      if (!err) for (var i in rows) arr.push(rows[i][fields[0].name]);
+      return callback(err, arr);
+    });
+  },
 
-	getColumnNames: function(conf, tableName, callback){
-		var sql = "show columns from "+tableName;
-		db.query(conf, sql, [], function(err, rows, fields){
-			if( err )return callback(err, rows);
-			var arr = [];
-			for( var i in rows )arr.push(rows[i].Field);
-			return callback(err, arr);
-		});
-
-	},
-
+  getColumnNames: function(conf, tableName, callback) {
+    var sql = "show columns from " + tableName;
+    db.query(conf, sql, [], function(err, rows, fields) {
+      if (err) return callback(err, rows);
+      var arr = [];
+      for (var i in rows) arr.push(rows[i].Field);
+      return callback(err, arr);
+    });
+  }
 };
 
 module.exports = db;

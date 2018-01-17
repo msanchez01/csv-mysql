@@ -102,13 +102,44 @@ CsvMysql.prototype.import = function(data, callback){
 
 	mysql.getColumnNames(_self.options.mysql, _self.options.table, function(err, cols){
 		if( err )return callback(err, err);
-
+	    
+		cols = cols.map(function (key) {
+	    	return '`' + key + '`';
+		})
 		for(var i=0; i<cols.length; i++)cols[i] = cols[i].toLowerCase();
 		_self.columns = cols;
 		csv.parse(data, _self.options.csv, function(err, rows){
 			if( err )return callback(err, err);
 			var header = _self.options.headers || rows.shift();
-			for(var i=0; i<header.length; i++)header[i] = header[i].toLowerCase();
+			for(var i=0; i<header.length; i++){
+				if(header[i].endsWith("Dt") || 
+				header[i].endsWith("Date") || 
+				header[i].endsWith("DT") || 
+				header[i].endsWith("DOSTo") || 
+				header[i].endsWith("DOD") || 
+				header[i].endsWith("DOB")){
+					rows.map(function (row) {
+						if(row[i] !== ""){
+							var date = new Date(Date.parse(row[i]))
+							var mysqlDate = (new Date(date)).toISOString().substring(0, 19).replace('T', ' ');
+							row[i] = mysqlDate.toString();//'\'' + row[i] + '\'';
+						}
+						else{
+							row[i] = null;
+						}
+					})
+				 }
+				 
+				if(header[i].endsWith("Key") || header[i].endsWith("key")){
+					rows.map(function (row) {
+						if(row[i] === ""){
+							row[i] = null;
+						}
+					})
+				}
+				header[i] = '`' + header[i].toLowerCase() + '`';
+				
+			}
 			_self._importRows(rows, header, callback);
 		});
 	});
